@@ -80,140 +80,12 @@ define([
 				return d;
 			})
 
-			var sortvalueRangoPSU = function(d) {
-				switch(d.key)
-					{
-					case "Bajo 475":
-					  return 20;
-					  break;
-					case "475 a 550":
-					  return 30;
-					  break;
-					case "Sobre 550":
-					  return 40 ;
-					  break;
-					case "Sin PSU":
-					  return 10 ;
-					  break;
-					default:
-					  return 10;
-					}
-			}
-
+	
 			// Calcula el valor total de estudiantes
 			var grantotal =  _.reduce(this.data, function(memo,d) {
 					return memo+parseInt(d.estudiantes)
 				},0);
 
-			// Genera nodos para gráfico de barras con distribución de estudiantes según categorías
-			var nodesRangoPSU = BarLayout()
-				.size([this.width-100,40])
-				.grantotal(grantotal)
-				.sortvalue(sortvalueRangoPSU)
-				.category("rangopsu")
-				.nodes(this.data);
-
-			// Genera nodos para gráfico de barras con distribución de estudiantes según categorías
-			var nodesRangoPSUQ1 = BarLayout()
-				.size([this.width-100,40])
-				.grantotal(grantotal)
-				.sortvalue(sortvalueRangoPSU)
-				.category("rangopsu")
-				.nodes(_.filter(this.data, function(d) {return d.QUINTIL == "1"}));
-
-			// Genera nodos para gráfico de barras con distribución de estudiantes según categorías
-			var nodesRangoPSUQ2 = BarLayout()
-				.size([this.width-100,40])
-				.grantotal(grantotal)
-				.sortvalue(sortvalueRangoPSU)
-				.category("rangopsu")
-				.nodes(_.filter(this.data, function(d) {return d.QUINTIL == "2"}));
-
-			// Genera nodos para gráfico de barras con distribución de estudiantes según categorías
-			var nodesRangoPSUQ3 = BarLayout()
-				.size([this.width-100,40])
-				.grantotal(grantotal)
-				.sortvalue(sortvalueRangoPSU)
-				.category("rangopsu")
-				.nodes(_.filter(this.data, function(d) {return d.QUINTIL == "3"}));
-
-			// Genera nodos para gráfico de barras con distribución de estudiantes según categorías
-			var nodesRangoPSUQ3 = BarLayout()
-				.size([this.width-100,40])
-				.grantotal(grantotal)
-				.sortvalue(sortvalueRangoPSU)
-				.category("rangopsu")
-				.nodes(_.filter(this.data, function(d) {return d.QUINTIL == "3"}));
-
-			// Genera nodos para gráfico de barras con distribución de estudiantes según categorías
-			var nodesRangoPSUQ4 = BarLayout()
-				.size([this.width-100,40])
-				.grantotal(grantotal)
-				.sortvalue(sortvalueRangoPSU)
-				.category("rangopsu")
-				.nodes(_.filter(this.data, function(d) {return d.QUINTIL == "4"}));
-
-			// Genera nodos para gráfico de barras con distribución de estudiantes según categorías
-			var nodesRangoPSUQ5 = BarLayout()
-				.size([this.width-100,40])
-				.grantotal(grantotal)
-				.sortvalue(sortvalueRangoPSU)
-				.category("rangopsu")
-				.nodes(_.filter(this.data, function(d) {return d.QUINTIL == "5"}));
-
-
-			var nodesDependencia = BarLayout()
-				.size([this.width,50])
-				.category("dependencia")
-				.nodes(this.data);
-
-			var nodesPSU = BarLayout()
-				.size([this.width,50])
-				.category("psu")
-				.nodes(this.data);
-
-			var nodesNEM = BarLayout()
-				.size([this.width,50])
-				.category("nem")
-				.nodes(this.data);
-
-			var nodesTipoIE = BarLayout()
-				.size([this.width,50])
-				.category("tipo_ie")
-				.nodes(this.data);
-
-			var nodesRanking10 = BarLayout()
-				.size([this.width,50])
-				.category("ranking_10")
-				.nodes(this.data);
-
-			var nodesRanking75 = BarLayout()
-				.size([this.width,50])
-				.category("ranking_75")
-				.nodes(this.data);
-
-			var nodesQuintil = BarLayout()
-				.size([this.width,50])
-				.category("QUINTIL")
-				.nodes(this.data);
-
-			this.groups = [
-				{titulo: "Puntaje PSU", nodes : nodesRangoPSU },
-				{titulo: "Q1", nodes : nodesRangoPSUQ1 },
-				{titulo: "Q2", nodes : nodesRangoPSUQ2 },
-				{titulo: "Q3", nodes : nodesRangoPSUQ3 },
-				{titulo: "Q4", nodes : nodesRangoPSUQ4 },
-				{titulo: "Q5", nodes : nodesRangoPSUQ5 },
-				{titulo: "Nota Educación Media", nodes : nodesNEM },
-				{titulo: "Tipo de Institución Superior en que se matricula", nodes : nodesTipoIE },
-				{titulo: "Pertenece al 10% de mejores egresados", nodes : nodesRanking10 },
-				{titulo: "Pertenece al 7.5% de mejores egresados", nodes : nodesRanking75 },
-				{titulo: "Quintil Socioeconómico", nodes : nodesQuintil }
-			];
-
-
-
-			//ranking_10	ranking_75	QUINTIL
 
 			this.render();
 	 
@@ -267,7 +139,17 @@ define([
 			return msg;
 		}, 
 
-		layout1 : function(nodes, xOrigin, width, total, left, right) {
+		/**
+		* Genera nodos que corresponden a objetos ordenados a la derecha e izquierda de un origen y que representan agrupaciones de estudiantes
+		* @param {array} nodes Lista de objetos que agrupan datos. Cada objeto tiene propiedad key (Identificador/nombre) y value (arreglo con detalle de grupos individuales de estudiantes - cada uno tiene propiedad estudiantes para indicar la cantidad de etsudiantes en el grupo)
+		* @param {number} xOrigin Punto en el eje x en torno al cual de ordenarán los nodos a la derceha e izquierda 
+		* @param {number} width Ancho que utilizara el conjunto total de nodos
+		* @param {number} total de estudiantes en el conjunto total de nodos
+		* @param {array} left Arreglo con el listado de keys o nombres de los subgrupos que se ordenarán a la izquierda del origen (partiendo por el más cercano al origen)
+		* @param {array} right Arreglo con el listado de keys o nombres de los subgrupos que se ordenarán a la derecha del origen (partiendo por el más cercano al origen)
+		* @returns {array} Arreglo con nodos que contienen propiedades x (pos x), dx (ancho), value (total de estudiantes en este nodo) y values (detalle de objetos con datos individuales)
+		*/
+		layoutXPSU : function(nodes, xOrigin, width, total, left, right) {
 			var map = {};
 
 			_.each(left, function(d,i) {
@@ -345,22 +227,47 @@ define([
 			// pos2 es la posición del nodo al agruparse todos los grupos PSU de un determinado quintil.
 			// Al igual que en nodos PSU, la pos2 asume algunos nodos a la izquierda del origen y otros a la derecha
 
+			/* this .data: Arreglo con objetos del tipo
+			 {
+			 	estudiantes : Numero total de estudiantes que comparten estas características
+			 	rangopsu : Rango de resultado PSU (Ej "Sobre 550")
+			 	tipo_ie : Tipo de institución en la cual está matriculado (Ej. "Centro de Formación Técnica")
+			 	QUINTIL : Quintil socioeconómico (Ej 3)
+			 }
+			 */
+
+
+			// Calcula el total de estudiantes en los datos
 			var total = _.reduce(this.data, function(memo,d) {return +memo+parseInt(d.estudiantes)}, 0)
 
-
+			// Grupos de PSU que se ubicarán a la izquierda del origen
 			var left = ["Bajo 475"];
+			// Grupos de PSU que se ubicarán a la derecha del origen
 			var right = ["475 a 550", "Sobre 550"];
+			// Lista ordenada de quintiles
 			var quintiles = ["1","2","3","4","5"];
 
+			// Posición x que corresponde al origen en torno al cual se ordenan los grupos
 			var xOrigin = 400;
+
+			// Ancho utilizado por el total de nodos unidos
 			var width = 800;
 
+			// Genera objeto con los datos agrupados según el atributo rango psu (Ej {"Bajo 475":[arreglo condatos], "Sobre550":[arreglo con datos], ...})
 			var psuGroupedData = _.groupBy(this.data, function(d) {return d.rangopsu});
+
+			// Convierte datos agrupados a un arreglo del tipo:
+			// [{key:"Bajo 475", value:[datos]}, {key:"Sobre 550", value:[datos]}, ...]
 			psuGroupedData = d3.entries(psuGroupedData);
 			
-			// PSUNODES
-			this.psunodesdata = this.layout1(psuGroupedData, xOrigin, width, total, left, right);
+			// psunodesdata
+			// ============
+			// Genera arreglo con datos de nodos psu
+			// [{key:"Bajo 475", x=350, dx=50, value: 1234, values:[datos]}, ...]
+			this.psunodesdata = this.layoutXPSU(psuGroupedData, xOrigin, width, total, left, right);
 
+			// Deja datos de ubicación bajo el atributo pos1 y genera atributos psukey & quintilkey
+			// [{psukey:"Bajo 475", quintilkey:"Todos", pos1.x=350, pos1.dx=50, value: 1234, values:[datos]}, ...]
 			_.map(this.psunodesdata, function(d) {
 				d.psukey = d.key;
 				d.quintilkey = "Todos";
@@ -389,7 +296,7 @@ define([
 				var left = [];
 				var right = quintiles;
 
-				var quintilnodes = self.layout1(subdata,localxOrigin,width, total, left, right );
+				var quintilnodes = self.layoutXPSU(subdata,localxOrigin,width, total, left, right );
 
 
 				// Almacena datos de posición en objeto pos1 y registra claves de psu & quintil
