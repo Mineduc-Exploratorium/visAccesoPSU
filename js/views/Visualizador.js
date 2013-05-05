@@ -37,8 +37,8 @@ define([
 			
 			// Configuración de espacio de despliegue de contenido en pantalla
 			this.margin = {top: 20, right: 20, bottom: 30, left: 20},
-	    	this.width = 1000 - this.margin.left - this.margin.right,
-	    	this.height = 400 - this.margin.top - this.margin.bottom;
+	    	this.width = 900 - this.margin.left - this.margin.right,
+	    	this.height = 300 - this.margin.top - this.margin.bottom;
 
 	   		this.color = d3.scale.category10();
 	   		this.colorIEs =  d3.scale.category20();
@@ -104,7 +104,9 @@ define([
 			var formatMiles = d3.format(",d");
 			var formatDecimal = d3.format('.2f')
 
-			msg = "<strong>"+d.psukey+" - Quintil : "+d.quintilkey+"</strong>";
+			var quintilmsg = (d.quintilkey == "0") ? "Todos los quintiles" : "Quintil : "+d.quintilkey;
+		
+			var msg = "<strong>"+d.psukey+" puntos en PSU - "+quintilmsg+"</strong>";
 			msg += "<br>"+formatMiles(d.value)+" estudiantes";
 
 			// Crea tabla condatos por universidades
@@ -205,9 +207,120 @@ define([
 				//}
 			})
 
+			// Deja datos de ubicación bajo el atributo pos1 y genera atributos psukey & quintilkey
+			// [{psukey:"Bajo 475", quintilkey:"Todos", pos1.x=350, pos1.dx=50, value: 1234, values:[datos]}, ...]
+			_.map(nodes, function(d) {
+				d.psukey = d.key;
+				d.quintilkey = "0";  //Se utiliza quintil 0 cunado están todos agrupados
+				d.pos1 = {};
+				d.pos1.x = d.x;
+				d.pos1.dx = d.dx
+			})
+
+
 
 			return nodes;
 		},
+
+		/**
+		* Genera nodos que corresponden subagrupaciones PSY & Quintil
+		* Se generan tantos nodos como combinacion PSU/Quintil con 2 posibles ubicaciones
+		* pos1: Ubicación de quintiles al interior de un grupo mayor de rango PSU
+		* pos2: Ubicación de todos los rangos PSU de un mismo quintil oredenados a la derecha e izquierda d eun origen
+		* @param {array} psunodesdata Arreglo con los nodos que contienen las ubicacioens de las agrupaciones principales por rango PSU
+		* Cada noso tiene propiedades x (pos x), dx (ancho), value (total de estudiantes en este nodo) y values (detalle de objetos con datos individuales)
+		* @param {number} xOrigin Punto en el eje x en torno al cual de ordenarán los nodos a la derceha e izquierda 
+		* @param {number} width Ancho que utilizara el conjunto total de nodos
+		* @param {number} total de estudiantes en el conjunto total de nodos
+		* @param {array} left Arreglo con el listado de keys o nombres de los subgrupos que se ordenarán a la izquierda del origen (partiendo por el más cercano al origen)
+		* @param {array} right Arreglo con el listado de keys o nombres de los subgrupos que se ordenarán a la derecha del origen (partiendo por el más cercano al origen)
+		* @param {array} quintiles Arreglo con el listado de quintiles Ej: [1,2,3,4,5]
+		* @returns {array} Arreglo con nodos que contienen propiedades x (pos x), dx (ancho), value (total de estudiantes en este nodo) y values (detalle de objetos con datos individuales)
+		*/
+		layoutXPSUQuintil : function(psunodesdata, xOrigin, width, total, left, right, quintiles) {
+			var self = this;
+
+			// Genera subnodoe (QuintilPSU) y los organiza en una matriz[psu][quintil]  nodeMapPSUQuintil["Bajo 475"]["1"] = arreglo con nodos de Bajo 475 Q1
+			// Para cada nodo calcula su pos1 (Ubicacion al interior de la agrupación "padre" de rango PSU)
+			// Seá utilizado como estructura auxiliar para calcular los datos de los subnodos
+			var nodeMapPSUQuintil = {};
+			_.each(psunodesdata, function(psunode) {
+				var psukey = psunode.key;
+				
+
+				nodeMapPSUQuintil[psukey] = {};
+
+				// Generar grupos por quintil para cada rango de PSU
+				var subdata =  _.groupBy(psunode.values, function(d) {return d.QUINTIL})
+				subdata = d3.entries(subdata);
+
+				// Filtra aquellos con Quintil no vacio para evitar errores
+				subdata = _.filter(subdata, function(d) {return d.key != ""} );
+
+				var localxOrigin = psunode.x;
+				var width = psunode.dx;
+				var total = psunode.value;
+				var left = [];
+				var right = quintiles;
+
+				// Genera los nodos de cada quintil para una agrupación PSU dada
+				var quintilnodes = self.layoutXPSU(subdata,localxOrigin,width, total, left, right );
+
+				// Almacena datos de posición en objeto pos1 y registra claves de psu & quintil
+				_.map(quintilnodes, function(node) {
+					node.psukey = psukey;
+					node.quintilkey = node.key;
+				})
+
+				// Ubica los nodos en el mapa (matriz) nodeMapPSUQuintil
+				_.each(quintilnodes, function(quintilnode) {
+					nodeMapPSUQuintil[psukey][quintilnode.key] = quintilnode;
+				})
+
+			})
+
+			// Recorre los nodos para calcular la posición 2 (agrupados por Quintil)
+			_.each(quintiles, function(quintil) {
+				var prevX;
+				var nextX;
+				// Calcula la posición de nodos ubicados a la izquierda del origen
+				_.each(left, function(rangopsu, i) {
+					var node = nodeMapPSUQuintil[rangopsu][quintil];
+					node.pos2 = {};
+					node.pos2.dx = node.pos1.dx;
+					if (i == 0) {
+						node.pos2.x = xOrigin - node.pos2.dx;
+					} else {
+						node.pos2.x = prevX - node.pos2.dx;
+					}
+					prevX = node.pos2.x;
+				});
+				// Calcula la posición de nodos ubicados a la derecha del origen
+				_.each(right, function(rangopsu, i) {
+					var node = nodeMapPSUQuintil[rangopsu][quintil];
+					node.pos2 = {};
+					node.pos2.dx = node.pos1.dx;
+					if (i == 0) {
+						node.pos2.x = xOrigin;					
+					} else {
+						node.pos2.x = nextX;
+					}
+					nextX = node.pos2.x+node.pos2.dx;
+				});
+			})
+
+			//Genera arreglo plano con todos los nodos almacenados en el mapa nodeMapPSUQuintil
+			var nodespsuquintil = [];
+
+			_.each(d3.entries(nodeMapPSUQuintil), function(subnodePSU) {
+				_.each(d3.entries(subnodePSU.value), function(subnodeQuintil) {
+					nodespsuquintil = _.union(nodespsuquintil, subnodeQuintil.value);
+				})
+			})
+
+			return nodespsuquintil
+		},
+
 
 		render: function() {
 			var self = this;
@@ -263,156 +376,48 @@ define([
 			// psunodesdata
 			// ============
 			// Genera arreglo con datos de nodos psu
-			// [{key:"Bajo 475", x=350, dx=50, value: 1234, values:[datos]}, ...]
+			// [{psukey:"Bajo 475", quintilkey="0", pos1.x=350, pos1.dx=50, value: 1234, values:[datos]}, ...]
 			this.psunodesdata = this.layoutXPSU(psuGroupedData, xOrigin, width, total, left, right);
 
-			// Deja datos de ubicación bajo el atributo pos1 y genera atributos psukey & quintilkey
-			// [{psukey:"Bajo 475", quintilkey:"Todos", pos1.x=350, pos1.dx=50, value: 1234, values:[datos]}, ...]
-			_.map(this.psunodesdata, function(d) {
-				d.psukey = d.key;
-				d.quintilkey = "Todos";
-				d.pos1 = {};
-				d.pos1.x = d.x;
-				d.pos1.dx = d.dx
-			})
 
-			// Genera mapa con subnodos nodeMapPSUQuintil["Bajo 475"]["1"] = arreglo con nodos de Bajo 475 Q1
-			var nodeMapPSUQuintil = {};
-			_.each(this.psunodesdata, function(psunode) {
-				var psukey = psunode.key;
-				
+			// nodespsuquintil
+			// ============
+			// Genera arreglo con datos de nodos segun psu & quintil
+			// [{psukey:"Bajo 475", quintilkey="3", pos1.x=350, pos1.dx=50, value: 1234, values:[datos]}, ...]
+			this.nodespsuquintil = this.layoutXPSUQuintil(this.psunodesdata, xOrigin, width, total, left, right, quintiles);
 
-				nodeMapPSUQuintil[psukey] = {};
+			// Escala y para ubicar nodos de distintos quintiles
+			// "0" Corresponde a todos los quintiles
+			this.yScale = d3.scale.ordinal()
+				.range([10,10,50,90,130,170])
+				.domain(["0", "1", "2", "3", "4", "5"])
 
-				// Generar grupos por quintil para cada rango de PSU
-				var subdata =  _.groupBy(psunode.values, function(d) {return d.QUINTIL})
-				subdata = d3.entries(subdata);
-
-				// Filtra aquellos con Quintil no vacio para evitar errores
-				subdata = _.filter(subdata, function(d) {return d.key != ""} );
-				var localxOrigin = psunode.x;
-				var width = psunode.dx;
-				var total = psunode.value;
-				var left = [];
-				var right = quintiles;
-
-				var quintilnodes = self.layoutXPSU(subdata,localxOrigin,width, total, left, right );
-
-
-				// Almacena datos de posición en objeto pos1 y registra claves de psu & quintil
-				_.map(quintilnodes, function(node) {
-					node.pos1 = {}
-					node.pos1.x = node.x;
-					node.pos1.dx = node.dx;
-					node.psukey = psukey;
-					node.quintilkey = node.key;
-				})
-
-				_.each(quintilnodes, function(quintilnode) {
-					nodeMapPSUQuintil[psukey][quintilnode.key] = quintilnode;
-				})
-
-			})
-
-			// Recorre los nodos para calcular la posición 2 (agrupados por Quintil)
-
-			_.each(quintiles, function(quintil) {
-				var prevX;
-				var nextX;
-				// Calcula la posición de nodos ubicados a la izquierda del origen
-				_.each(left, function(rangopsu, i) {
-					var node = nodeMapPSUQuintil[rangopsu][quintil];
-					node.pos2 = {};
-					node.pos2.dx = node.pos1.dx;
-					if (i == 0) {
-						node.pos2.x = xOrigin - node.pos2.dx;
-					} else {
-						node.pos2.x = prevX - node.pos2.dx;
-					}
-					prevX = node.pos2.x;
-				});
-				// Calcula la posición de nodos ubicados a la derecha del origen
-				_.each(right, function(rangopsu, i) {
-					var node = nodeMapPSUQuintil[rangopsu][quintil];
-					node.pos2 = {};
-					node.pos2.dx = node.pos1.dx;
-					if (i == 0) {
-						node.pos2.x = xOrigin;					
-					} else {
-						node.pos2.x = nextX;
-					}
-					nextX = node.pos2.x+node.pos2.dx;
-				});
-			})
-
-			//NODESPSUQUINTIL
-			this.nodespsuquintil = [];
-
-			_.each(d3.entries(nodeMapPSUQuintil), function(subnodePSU) {
-				_.each(d3.entries(subnodePSU.value), function(subnodeQuintil) {
-					self.nodespsuquintil = _.union(self.nodespsuquintil, subnodeQuintil.value);
-				})
-			})
-
-
-			
-
-			//mynodes = nodespsuquintil;
-			mynodes = this.psunodesdata;
-
-			this.PosY = {
-				"0" : 50,
-				"1" : 50,
-				"2" : 100,
-				"3" : 150,
-				"4" : 200,
-				"5" : 250
-			}
-
-			this.DY = 40,
-
+			// Ancho (altura) de cada nodo
+			this.barHeight = 40,
 
 			this.mainDiv = d3.select(this.el).append("div")
 					.style("position", "relative")
 			    	.style("height", self.height + "px")
 			    	.style("width", self.width + "px")
 
+			// Detecta click en el body para realizar un cambio de modo (Agrupado vs desagrupado por quintil)
 			d3.select("body")
 				.on("click", this.toggle)
 
-
+			// Muestra nodos agrupados por PSU
 			this.showpsunodes(this.psunodesdata);
-
-			//this.showquintilnodes(nodespsuquintil);
-
-
-			this.quintillabels = this.mainDiv.selectAll(".node.etiqueta")
-				.data([	{label:"Quintil 1", quintil:1},
-						{label:"Quintil 2", quintil:2},
-						{label:"Quintil 3", quintil:3},
-						{label:"Quintil 4", quintil:4},
-						{label:"Quintil 5", quintil:5}
-						]
-						)
-				.enter()
-					.append("div")	
-			  		.attr("class", "node etiqueta")
-					.style("position", "absolute")
-					.style("opacity", "0")
-					.style("left", function(d) { return 0 + "px"; })
-					.style("top", function(d) { return self.PosY[d.quintil] + "px"; })
-					.text(function(d) {return d.label}) 
+			this.showetiquetas();
 
 
 
 
 			this.visiblePorQuintiles = false;
 
-
-
-
 		},
 
+		/**
+		* Alterna entre vista desagrupada por quintil y no desagrupada por quintil
+		*/
 		toggle : function() {
 			var self = this;
 				this.visiblePorQuintiles = !this.visiblePorQuintiles;
@@ -438,6 +443,32 @@ define([
 			},
 
 		/**
+		* Muestar etiquetas de Quintiles
+		*/
+		showetiquetas : function() {
+			var self = this;
+			
+			// Genera etiquetas de quintiles (oculta)
+			this.quintillabels = this.mainDiv.selectAll(".node.etiqueta")
+				.data([	{label:"Quintil 1", quintil:1},
+						{label:"Quintil 2", quintil:2},
+						{label:"Quintil 3", quintil:3},
+						{label:"Quintil 4", quintil:4},
+						{label:"Quintil 5", quintil:5}
+						]
+						)
+				.enter()
+					.append("div")	
+			  		.attr("class", "node etiqueta")
+					.style("position", "absolute")
+					.style("opacity", "0")
+					.style("left", function(d) { return 50 + "px"; })
+					.style("top", function(d) { return self.yScale(d.quintil) + "px"; })
+					.text(function(d) {return d.label}) 
+		},
+
+
+		/**
 		* Depsliega los nodos correspondientes a las agrupaciones de resultados PSU 
 		* para el universi total de datos
 		*/
@@ -460,7 +491,7 @@ define([
 		  		.style("position", "absolute")
 		  		.call(position0)
 				.style("background", function(d) { return self.color(d.psukey) })
-				.text(function(d) { return d.key; })
+				.text(function(d) { return d.psukey; })
 				.on("mouseenter", function(d) {
 					self.tooltip.show(d);
 				})
@@ -473,7 +504,7 @@ define([
 
 			function position0() {
 			  this.style("left", function(d) { return d.pos1.x + "px"; })
-			      .style("top", function(d) { return self.PosY[0] + "px"; })
+			      .style("top", function(d) { return self.yScale(d.quintilkey) + "px"; })
 			      .style("width", function(d) { return d.pos1.dx + "px"; })
 			      .style("height", function(d) { return 30 + "px"; });
 			}
@@ -508,6 +539,7 @@ define([
 					.style("position", "absolute")
 					.style("opacity", "0")
 					.call(position1)
+					//.text(function(d) { return d.psukey; })
 					.style("background", function(d) { return self.color(d.psukey) })
 					//.text(function(d) { return d.psukey; })
 					.on("mouseenter", function(d) {
@@ -536,14 +568,14 @@ define([
 
 			function position1() {
 			  this.style("left", function(d) { return d.pos1.x + "px"; })
-			      .style("top", function(d) { return self.PosY[0] + "px"; })
-			      .style("width", function(d) { return d.pos1.dx + "px"; })
-			      .style("height", function(d) { return 30 + "px"; });
+		      	.style("top", function(d) { return self.yScale("0") + "px"; })
+				.style("width", function(d) { return d.pos1.dx + "px"; })
+			    .style("height", function(d) { return 30 + "px"; });
 			}
 		
 			function position2() {
 			  this.style("left", function(d) { return d.pos2.x + "px"; })
-			      .style("top", function(d) { return self.PosY[d.quintilkey] + "px"; })
+			      .style("top", function(d) { return self.yScale(d.quintilkey) + "px"; })
 			      .style("width", function(d) { return d.pos2.dx + "px"; })
 			      .style("height", function(d) { return 30 + "px"; });
 			}
