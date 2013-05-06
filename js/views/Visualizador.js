@@ -29,6 +29,24 @@ define([
 			//this.svg = this.options && this.options.svg ? this.options.svg : document.createElementNS('http://www.w3.org/2000/svg', "g");
 			this.data = this.options && this.options.data ? this.options.data : [];
 
+			// Formato de datos de entrada
+			// [
+			// {
+			//		estudiantes : "2213" - cantidad de estudiantes en esta agrupación
+			//		agno_ingreso : "2012" - año de ingreso a ES (2006 a 2013)
+			//		tipo_ie : "IP" - tipo de institución (IP | CFT | FFAA | U-CRUCH | U-PRIVADA)
+			//		psu : "700a900" - rango de puntaje PSU (100 a 475 | 475a500 | 500a550 | 550a600 | 600a700 | 700a900 | S/I )
+			//		nem : "50a55" - rango de notas NEM (10a40 | 40a50 | 50a55 | 55a60 | 60a70 | S/I)
+			//		ranking_10 : "1" - pertenece a 10% mejores egresados ("0" | "1")
+			//		ranking_75 : "1" - pertenece a 7.5% mejores egresados ("0" | "1")
+			// 		dependencia : "PP" - dependencia de egreso (MUN | PP | PS | S/I)
+			//		año_egreso : "2012" - año de egreso (2009 | 2010 | 2011 | 2012 | 2008oAnterior | S/I)
+			//		QUINTIL : "3" - Quintil socioeconímico (1,2,3,4,5)
+			//	
+			// },
+			// ...
+			// ]
+
 			// Binding de this (esta vista) al contexto de las funciones indicadas
 			_.bindAll(this,"render", "tootipMessage", "toggle")
 
@@ -37,12 +55,14 @@ define([
 			
 			// Configuración de espacio de despliegue de contenido en pantalla
 			this.margin = {top: 20, right: 20, bottom: 30, left: 20},
-	    	this.width = 900 - this.margin.left - this.margin.right,
+	    	this.width = 800 - this.margin.left - this.margin.right,
 	    	this.height = 300 - this.margin.top - this.margin.bottom;
 
-	   		this.color = d3.scale.category10();
+	    	// Escala de colores para rango PSU
+	   		this.colorPSU = d3.scale.category10();
 	   		this.colorIEs =  d3.scale.category20();
 
+	   		// Crea tooltip utilizada para desplegar detalles de elementos
 			this.tooltip = new VistaTooltip();
 	  		// Reescribe función generadora del mensaje en tooltip
 			this.tooltip.message = this.tootipMessage;
@@ -50,7 +70,13 @@ define([
 			// Limpia Data
 			// ===========
 			// Limpia datos de entrada (P.Ej. Cambiar duración de semestres a años)
-			this.data = _.filter(this.data, function(d) {return d.año_egreso == 2012})
+
+			// Deja filtar para dejar sólo estudiantes egresadoel 2012
+			this.data = _.filter(this.data, function(d) {return (d.año_egreso == 2012)})
+			
+			// Crea nuevas agrupaciones por resultados PSU
+			// De psu : (100 a 475 | 475a500 | 500a550 | 550a600 | 600a700 | 700a900 | S/I )
+			// A rangopsu : ("Bajo 475" | "475 a 550" | "Sobre 550")
 			this.data = _.map(this.data, function(d,i) {
 				switch(d.psu)
 				{
@@ -81,10 +107,6 @@ define([
 			})
 
 	
-			// Calcula el valor total de estudiantes
-			var grantotal =  _.reduce(this.data, function(memo,d) {
-					return memo+parseInt(d.estudiantes)
-				},0);
 
 
 			this.render();
@@ -104,12 +126,13 @@ define([
 			var formatMiles = d3.format(",d");
 			var formatDecimal = d3.format('.2f')
 
-			var quintilmsg = (d.quintilkey == "0") ? "Todos los quintiles" : "Quintil : "+d.quintilkey;
+			// Texto a incluir para identificar el quintil ("0" -> Todos)
+			var quintilmsg = (d.quintilkey == "0") ? "Todos los quintiles" : "Quintil "+d.quintilkey;
 		
 			var msg = "<strong>"+d.psukey+" puntos en PSU - "+quintilmsg+"</strong>";
-			msg += "<br>"+formatMiles(d.value)+" estudiantes";
+			msg += "<br>Total: "+formatMiles(d.value)+" estudiantes<br><br>";
 
-			// Crea tabla condatos por universidades
+			// Crea arreglo con datos por tipo de universidades
 			grupoTipoIE = d3.entries(_.groupBy(d.values, function(d) {return d.tipo_ie}))
 			_.map(grupoTipoIE, function(d) {
 				d.total = _.reduce(d.value, function(memo, d) {return +memo+parseInt(d.estudiantes)}, 0)
@@ -137,6 +160,10 @@ define([
 				.text(function(d) {return formatMiles(d.total)+" estudiantes"})
 				
 			msg += tablecontainer.html();
+
+			var estudiantesTop75 = _.reduce(d.values, function(memo,d) {return (d.ranking_75=="1" && d.dependencia!="PP")?+memo +parseInt(d.estudiantes):memo}, 0)
+
+			msg += "<br>"+formatMiles(estudiantesTop75)+ " estudiantes en los 7,5% mejores egresados de su establecimiento (municipales o particulares subvencionados)"
 			
 			return msg;
 		}, 
@@ -152,35 +179,45 @@ define([
 		* @returns {array} Arreglo con nodos que contienen propiedades x (pos x), dx (ancho), value (total de estudiantes en este nodo) y values (detalle de objetos con datos individuales)
 		*/
 		layoutXPSU : function(nodes, xOrigin, width, total, left, right) {
+			
+			// Cosntruye map (objeto) indexando todos los grupos de PSu
 			var map = {};
 
 			_.each(left, function(d,i) {
 				map[d] = {};
-				map[d].order = -(i+1);
+				//map[d].order = -(i+1);
 				map[d].nodeIndex = null;
 			});
 
 			_.each(right, function(d,i) {
 				map[d] = {};
-				map[d].order = i;
+				//map[d].order = i;
 				map[d].nodeIndex = null;
 			});
 
+			// Asigna a cada nodo atributos 
+			// values: arreglo con el listado de nodos asocidaos al rango de pSU (originalmente almacenado como value)
+			// value: total de estudiantes (suma los estudiantes de todos los nodos en la categoría)
+			// dx: ancho del nodo (proporcional a la cantidad de estudiantes c/r al total)
 			_.map(nodes, function(d) {
 				d.values = d.value;
 				d.value = _.reduce(d.values, function(memo,d) {return +memo+parseInt(d.estudiantes)}, 0);
 				d.dx = width*d.value/total;
 			});
 
+			// Registra en map el índice del respectivo nodo en el arreglo nodes (y el ancho dx)
 			_.each(nodes, function(d,i) {
 				map[d.key].nodeIndex=i;
 				map[d.key].dx = d.dx;
 			});
 
+			// Calcula posición x de los nodos a la derecha del origen
 			_.each(right, function(key,i) {
+				// Primer nodo a la derecha
 				if (i == 0) {
 					x = xOrigin
 				} else {
+					// Calcula pos x en base a posicion y ancho del nodo anterior
 					prevIndex = map[right[i-1]].nodeIndex;
 					prevNode = nodes[prevIndex];
 					x = prevNode.x + prevNode.dx
@@ -189,22 +226,20 @@ define([
 			})
 
 			_.each(left, function(key,i) {
-				// Verificar que exista un nodo para esta categorría y calcular psoición
-				//if (map[left[i]].nodeIndex) {
-					if (i == 0) {
-						myIndex = map[left[i]].nodeIndex;
-						myNode = nodes[myIndex];
-						x = xOrigin - myNode.dx;
-					} else {
-						prevIndex = map[left[i-1]].nodeIndex;
-						prevNode = nodes[prevIndex];
-						myIndex = map[left[i]].nodeIndex;
-						myNode = nodes[myIndex];
+				// Verificar que exista un nodo para esta categoría y calcular psoición
+				if (i == 0) {
+					myIndex = map[left[i]].nodeIndex;
+					myNode = nodes[myIndex];
+					x = xOrigin - myNode.dx;
+				} else {
+					prevIndex = map[left[i-1]].nodeIndex;
+					prevNode = nodes[prevIndex];
+					myIndex = map[left[i]].nodeIndex;
+					myNode = nodes[myIndex];
 
-						x = prevNode.x - myNode.dx
-					}
-					nodes[map[key].nodeIndex].x = x;
-				//}
+					x = prevNode.x - myNode.dx
+				}
+				nodes[map[key].nodeIndex].x = x;
 			})
 
 			// Deja datos de ubicación bajo el atributo pos1 y genera atributos psukey & quintilkey
@@ -216,8 +251,6 @@ define([
 				d.pos1.x = d.x;
 				d.pos1.dx = d.dx
 			})
-
-
 
 			return nodes;
 		},
@@ -361,10 +394,10 @@ define([
 			var quintiles = ["1","2","3","4","5"];
 
 			// Posición x que corresponde al origen en torno al cual se ordenan los grupos
-			var xOrigin = 400;
+			var xOrigin = self.width/2;
 
 			// Ancho utilizado por el total de nodos unidos
-			var width = 800;
+			var width = this.width;
 
 			// Genera objeto con los datos agrupados según el atributo rango psu (Ej {"Bajo 475":[arreglo condatos], "Sobre550":[arreglo con datos], ...})
 			var psuGroupedData = _.groupBy(this.data, function(d) {return d.rangopsu});
@@ -383,7 +416,7 @@ define([
 			// nodespsuquintil
 			// ============
 			// Genera arreglo con datos de nodos segun psu & quintil
-			// [{psukey:"Bajo 475", quintilkey="3", pos1.x=350, pos1.dx=50, value: 1234, values:[datos]}, ...]
+			// [{psukey:"Bajo 475", quintilkey="3", pos1.x=350, pos1.dx=50, pos2.x=250, pos2.dx=50, value: 1234, values:[datos]}, ...]
 			this.nodespsuquintil = this.layoutXPSUQuintil(this.psunodesdata, xOrigin, width, total, left, right, quintiles);
 
 			// Escala y para ubicar nodos de distintos quintiles
@@ -401,18 +434,15 @@ define([
 			    	.style("width", self.width + "px")
 
 			// Detecta click en el body para realizar un cambio de modo (Agrupado vs desagrupado por quintil)
-			d3.select("body")
+			d3.select(this.el)
 				.on("click", this.toggle)
 
 			// Muestra nodos agrupados por PSU
 			this.showpsunodes(this.psunodesdata);
 			this.showetiquetas();
 
-
-
-
+			// Recuerda estado actual para poder alternar entre visible y no visible
 			this.visiblePorQuintiles = false;
-
 		},
 
 		/**
@@ -447,7 +477,7 @@ define([
 		*/
 		showetiquetas : function() {
 			var self = this;
-			
+
 			// Genera etiquetas de quintiles (oculta)
 			this.quintillabels = this.mainDiv.selectAll(".node.etiqueta")
 				.data([	{label:"Quintil 1", quintil:1},
@@ -489,8 +519,15 @@ define([
 		  		.attr("class", "node psu")
 		  		.style("opacity", "0")
 		  		.style("position", "absolute")
+		  		.style("text-align", "center")
 		  		.call(position0)
-				.style("background", function(d) { return self.color(d.psukey) })
+				.style("background", function(d) { return self.colorPSU(d.psukey) })
+				.style("color", function(d) {
+					// Estima la claridad del color de fondo para elegit el color del texto
+					bgcolor = self.colorPSU(d.psukey);
+					a = 1 - ( 0.299 * bgcolor.r + 0.587 * bgcolor.g + 0.114 * bgcolor.b)/255;
+					return a < 0.5 ? "black" : "white"; 
+				})
 				.text(function(d) { return d.psukey; })
 				.on("mouseenter", function(d) {
 					self.tooltip.show(d);
@@ -540,7 +577,7 @@ define([
 					.style("opacity", "0")
 					.call(position1)
 					//.text(function(d) { return d.psukey; })
-					.style("background", function(d) { return self.color(d.psukey) })
+					.style("background", function(d) { return self.colorPSU(d.psukey) })
 					//.text(function(d) { return d.psukey; })
 					.on("mouseenter", function(d) {
 						self.tooltip.show(d);
